@@ -43,18 +43,21 @@ struct GameObject {
 	// glm::vec3 heading;
 	float scale; // Or, alternatively, a glm::vec2 scale;
 	glm::mat4 transformationMatrix;
-	glm::vec3 movementVector; //movement vector for the diamond 
+	glm::vec3 movementVector; //movement vector for the diamond
+	bool diamondVisible = true; //visibility of diamond for game logic
 };
 
 // EXAMPLE CALLBACKS
 class MyCallbacks : public CallbackInterface {
 
 public:
-	MyCallbacks(ShaderProgram& shader, GameObject& ship) : shader(shader), ship(ship) {}
+	MyCallbacks(ShaderProgram& shader, GameObject& ship, std::vector<std::shared_ptr<GameObject>>& pickups, std::vector<glm::vec3>& initialDiamondPositions, std::vector<glm::vec3>& initialMovementVectors,
+		int& score, std::string& scoreValue, bool& gameWin, bool& playerMoving) : shader(shader), ship(ship), pickups(pickups), initialDiamondPositions(initialDiamondPositions), initialMovementVectors(initialMovementVectors),
+			score(score), scoreValue(scoreValue), gameWin(gameWin), playerMoving(playerMoving) {}
 
 	virtual void keyCallback(int key, int scancode, int action, int mods) {
 		if (key == GLFW_KEY_R && action == GLFW_PRESS) {
-			shader.recompile();
+			restartGame();
 		}
 		if (action == GLFW_PRESS || action == GLFW_REPEAT) {
 			float moveSpeed = 0.01f; //change this value to make ship go faster or slower :D, don't forget to also change the moveSpeed in the rendering loop as well.
@@ -84,10 +87,39 @@ public:
 		ship.theta = atan2(dy, dx) - glm::radians(90.0f); //adjust it to match ship's sprite
 
 	}
+	void restartGame() {
+		ship.position = glm::vec3(0.0f, 0.0f, 0.0f);
+		ship.theta = 0.0f;
+		ship.scale = 0.1f;
+		ship.transformationMatrix = glm::mat4(1.0f);
+
+		//resets all diamonds
+		for (int i = 0; i < pickups.size(); i++) {
+			pickups[i]->diamondVisible = true;
+			pickups[i]->position = initialDiamondPositions[i];
+			pickups[i]->movementVector = initialMovementVectors[i];
+			pickups[i]->theta = 0.0f;
+			pickups[i]->theta = 0.1f;
+			pickups[i]->transformationMatrix = glm::mat4(1.0f);
+		}
+
+		score = 0;
+		scoreValue = "0";
+		gameWin = false;
+		playerMoving = false;
+
+	}
 
 private:
 	ShaderProgram& shader;
 	GameObject& ship;
+	std::vector<std::shared_ptr<GameObject>> pickups;
+	std::vector<glm::vec3>& initialDiamondPositions;
+	std::vector<glm::vec3>& initialMovementVectors;
+	int& score;
+	std::string& scoreValue;
+	bool& gameWin;
+	bool& playerMoving;
 };
 
 CPU_Geometry shipGeom() {
@@ -137,8 +169,25 @@ void updateTransformMatrix(GameObject& obj) {
 	obj.transformationMatrix = translationMatrix * rotationMatrix * scaleMatrix;
 }
 
+//fxn to check for collision between two objects
+
+bool collision(const GameObject& object1, const GameObject& object2){
+	float distance = glm::distance(object1.position, object2.position); //gets distance between the two objects colliding
+	float collisionDistance = object1.scale + object2.scale;
+	return distance < collisionDistance;
+}
+
 
 int main() {
+	int score = 0;
+	std::string scoreValue = "0";
+	static bool playerMoving = false;
+	//int score;
+	//std::string scoreValue = "0";
+	bool gameWin = false;
+	std::string winMessage = "You've collected all the diamonds! Great job! Press [R] to start a new game.";
+
+
 	Log::debug("Starting main");
 
 	// WINDOW
@@ -167,24 +216,57 @@ int main() {
 	ship.theta = 0.0f;
 	ship.scale = 0.1f;
 	ship.transformationMatrix = glm::mat4(1.0f);
-	window.setCallbacks(std::make_shared<MyCallbacks>(shader, ship));
+	//window.setCallbacks(std::make_shared<MyCallbacks>(shader, ship, pickups));
 
 
-	//initialize diamond
-	GameObject diamond("textures/diamond.png", GL_NEAREST);
-	diamond.cgeom = shipGeom();
-	diamond.ggeom.setVerts(diamond.cgeom.verts);
-	diamond.ggeom.setTexCoords(diamond.cgeom.texCoords);
-	diamond.theta = 0.0f;
-	diamond.scale = 0.1f;
-	diamond.transformationMatrix = glm::mat4(1.0f);
-	diamond.position = glm::vec3(0.5f, 0.0f, 0.0f);
-	diamond.movementVector = glm::vec3(0.005f, 0.003f, 0.0f); //constant movement vector
-	
+	//initialize diamonds
+	std::vector<std::shared_ptr<GameObject>> pickups;
+	std::vector<glm::vec3> initialDiamondPositions;
+	std::vector<glm::vec3> initialMovementVectors;
+
+
+
+	for (int i = 0; i < 5; i++) {
+		auto diamond = std::make_shared<GameObject>("textures/diamond.png", GL_NEAREST);
+		diamond->cgeom = shipGeom();
+		diamond->ggeom.setVerts(diamond->cgeom.verts);
+		diamond->ggeom.setTexCoords(diamond->cgeom.texCoords);
+		diamond->theta = 0.0f;
+		diamond->scale = 0.1f;
+		diamond->transformationMatrix = glm::mat4(1.0f);
+
+		switch (i) { //set initial position for diamonds
+			case 0:
+				diamond->position = glm::vec3(0.5f, 0.5f, 0.0f);
+				break;
+			case 1:
+				diamond->position = glm::vec3(-0.5f, 0.5f, 0.0f);
+				break;
+			case 2:
+				diamond->position = glm::vec3(0.7f, 0.4f, 0.0f);
+				break;
+			case 3:
+				diamond->position = glm::vec3(0.3f, 0.2f, 0.0f);
+				break;
+			case 4:
+				diamond->position = glm::vec3(0.0f, 0.9f, 0.0f);
+				break;
+		}
+		diamond->movementVector = glm::vec3(0.005f * (i + 1), 0.005f * (i - 1), 0.0f);
+
+		initialDiamondPositions.push_back(diamond->position);
+		initialMovementVectors.push_back(diamond->movementVector);
+
+		pickups.push_back(diamond); //adds diamonds to pickups vector
+	}
+
+
+	window.setCallbacks(std::make_shared<MyCallbacks>(
+		shader, ship, pickups, initialDiamondPositions, initialMovementVectors,
+		score, scoreValue, gameWin, playerMoving));
 
 	// RENDER LOOP
-	while (!window.shouldClose()) {
-		int score;
+	while (!window.shouldClose()) { 
 		glfwPollEvents();
 
 		//since keyCallback just captures key events, we need to check key states each frame to ensure continuous movement when keys are held down
@@ -201,15 +283,40 @@ int main() {
 		ship.position.x = glm::clamp(ship.position.x, -1.0f + ship.scale, 1.0f - ship.scale);
 		ship.position.y = glm::clamp(ship.position.y, -1.0f + ship.scale, 1.0f - ship.scale);
 
-		diamond.position += diamond.movementVector;
+		for (auto& diamondPointer : pickups) {
+			auto& diamond = *diamondPointer;
+			if (!diamond.diamondVisible) continue;
 
-		//checks if it hits window edge and invert movement vector
-		if (diamond.position.x + diamond.scale >= 1.0f || diamond.position.x - diamond.scale <= -1.0f) {
-			diamond.movementVector.x *= -1.0f;
+			diamond.position += diamond.movementVector;
+			//checks if it hits window edge and invert movement vector
+			if (diamond.position.x + diamond.scale >= 1.0f || diamond.position.x - diamond.scale <= -1.0f) {
+				diamond.movementVector.x *= -1.0f;
+			}
+			if (diamond.position.y + diamond.scale >= 1.0f || diamond.position.y - diamond.scale <= -1.0f) {
+				diamond.movementVector.y *= -1.0f;
+			}
 		}
-		if (diamond.position.y + diamond.scale >= 1.0f || diamond.position.y - diamond.scale <= -1.0f) {
-			diamond.movementVector.y *= -1.0f;
+
+		if (!playerMoving && (ship.position != glm::vec3(0.0f, 0.0f, 0.0f))) {
+			playerMoving = true;
 		}
+
+		for (auto& diamondPointer : pickups) {
+			auto& diamond = *diamondPointer;
+			if (!diamond.diamondVisible) continue;
+
+			if (playerMoving && collision(ship, diamond)) {
+				diamond.diamondVisible = false;
+				ship.scale += 0.05f; //increase ship's size, big number rn for debugging
+				score += 1;
+
+				scoreValue = std::to_string(score);
+				if (score == 5) {
+					gameWin = true;
+				}
+			}
+		}
+
 		
 
 		shader.use();
@@ -233,16 +340,21 @@ int main() {
 		glDrawArrays(GL_TRIANGLES, 0, 6);
 		ship.texture.unbind();
 
-		//draw diamond
-		updateTransformMatrix(diamond);
-		diamond.ggeom.bind();
-		diamond.texture.bind();
+		//draw diamonds
+		for (auto& diamondPointer : pickups) {
+			auto& diamond = *diamondPointer;
+			if (!diamond.diamondVisible) continue;
+			updateTransformMatrix(diamond);
+			diamond.ggeom.bind();
+			diamond.texture.bind();
 
-		glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(diamond.transformationMatrix));
-		glDrawArrays(GL_TRIANGLES, 0, 6);
-		diamond.texture.unbind();
+			glUniformMatrix4fv(uniTrans, 1, GL_FALSE, glm::value_ptr(diamond.transformationMatrix));
+			glDrawArrays(GL_TRIANGLES, 0, 6);
+			diamond.texture.unbind();
+		}
 
 		glDisable(GL_FRAMEBUFFER_SRGB); // disable sRGB for things like imgui
+
 
 		// Starting the new ImGui frame
 		ImGui_ImplOpenGL3_NewFrame();
@@ -267,8 +379,12 @@ int main() {
 
 		// Scale up text a little, and set its value
 		ImGui::SetWindowFontScale(1.5f);
-		ImGui::Text("Score: %d", 0); // Second parameter gets passed into "%d"
-
+		if (gameWin) {
+			ImGui::Text("%s", winMessage.c_str());
+		}
+		else {
+			ImGui::Text("Score: %s", scoreValue.c_str()); // Second parameter gets passed into "%d"
+		}
 		// End the window.
 		ImGui::End();
 
