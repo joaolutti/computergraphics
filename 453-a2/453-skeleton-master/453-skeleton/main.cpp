@@ -43,38 +43,51 @@ struct GameObject {
 	// glm::vec3 heading;
 	float scale; // Or, alternatively, a glm::vec2 scale;
 	glm::mat4 transformationMatrix;
+	glm::vec3 movementVector; //movement vector for the diamond 
 };
 
 // EXAMPLE CALLBACKS
 class MyCallbacks : public CallbackInterface {
 
 public:
-	MyCallbacks(ShaderProgram& shader) : shader(shader) {}
+	MyCallbacks(ShaderProgram& shader, GameObject& ship) : shader(shader), ship(ship) {}
 
 	virtual void keyCallback(int key, int scancode, int action, int mods) {
 		if (key == GLFW_KEY_R && action == GLFW_PRESS) {
 			shader.recompile();
 		}
+		if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+			float moveSpeed = 0.01f; //change this value to make ship go faster or slower :D, don't forget to also change the moveSpeed in the rendering loop as well.
+			if (key == GLFW_KEY_W || key == GLFW_KEY_UP) {
+				ship.position.x += moveSpeed * cos(ship.theta + glm::radians(90.0f));
+				ship.position.y += moveSpeed * sin(ship.theta + glm::radians(90.0f));
+			}
+			if (key == GLFW_KEY_S || key == GLFW_KEY_DOWN) {
+				ship.position.x -= moveSpeed * cos(ship.theta + glm::radians(90.0f));
+				ship.position.y -= moveSpeed * sin(ship.theta + glm::radians(90.0f));
+			}
+		}
 	}
 
-	//virtual void cursorPositionCallback(double x, double y) { //callback to capture current mouse position
-	//	int windowWidth, windowHeight;
-	//	glfwGetWindowSize(glfwGetCurrentContext(), &windowWidth, &windowHeight);
+	virtual void cursorPosCallback(double x_position, double y_position) { //callback to capture current mouse position
+		int windowWidth, windowHeight;
+		glfwGetWindowSize(glfwGetCurrentContext(), &windowWidth, &windowHeight);
 
-	//	//converts mouse pos to normalized coordinates (-1 to 1)
-	//	float x = static_cast<float>(x) / windowWidth * 2.0f - 1.0f;
-	//	float y = 1.0f - static_cast<float>(y) / windowHeight * 2.0f;
+		//converts mouse pos to normalized coordinates (-1 to 1)
+		float x = static_cast<float>(x_position) / windowWidth * 2.0f - 1.0f;
+		float y = 1.0f - static_cast<float>(y_position) / windowHeight * 2.0f;
 
-	//	//compute angle between ship pos and mouse pos
-	//	float dx = x - ship.position.x;
-	//	float dy = y - ship.position.y;
+		//compute angle between ship pos and mouse pos
+		float dx = x - ship.position.x;
+		float dy = y - ship.position.y;
 
-	//	ship.theta = atan2(dy, dx) - glm::radians(90.0f); //adjust it to match ship's sprite
+		ship.theta = atan2(dy, dx) - glm::radians(90.0f); //adjust it to match ship's sprite
 
-	//}
+	}
 
 private:
 	ShaderProgram& shader;
+	GameObject& ship;
 };
 
 CPU_Geometry shipGeom() {
@@ -139,7 +152,7 @@ int main() {
 	ShaderProgram shader("shaders/test.vert", "shaders/test.frag");
 
 	// CALLBACKS
-	window.setCallbacks(std::make_shared<MyCallbacks>(shader)); // can also update callbacks to new ones
+	//window.setCallbacks(std::make_shared<MyCallbacks>(shader, ship)); // can also update callbacks to new ones
 
 	// GL_NEAREST looks a bit better for low-res pixel art than GL_LINEAR.
 	// But for most other cases, you'd want GL_LINEAR interpolation.
@@ -154,6 +167,7 @@ int main() {
 	ship.theta = 0.0f;
 	ship.scale = 0.1f;
 	ship.transformationMatrix = glm::mat4(1.0f);
+	window.setCallbacks(std::make_shared<MyCallbacks>(shader, ship));
 
 
 	//initialize diamond
@@ -161,19 +175,42 @@ int main() {
 	diamond.cgeom = shipGeom();
 	diamond.ggeom.setVerts(diamond.cgeom.verts);
 	diamond.ggeom.setTexCoords(diamond.cgeom.texCoords);
-	diamond.position = glm::vec3(0.5f, 0.5f, 0.5f);
 	diamond.theta = 0.0f;
 	diamond.scale = 0.1f;
 	diamond.transformationMatrix = glm::mat4(1.0f);
-
-
+	diamond.position = glm::vec3(0.5f, 0.0f, 0.0f);
+	diamond.movementVector = glm::vec3(0.005f, 0.003f, 0.0f); //constant movement vector
 	
-
 
 	// RENDER LOOP
 	while (!window.shouldClose()) {
 		int score;
 		glfwPollEvents();
+
+		//since keyCallback just captures key events, we need to check key states each frame to ensure continuous movement when keys are held down
+		float moveSpeed = 0.01f;
+		if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_W) == GLFW_PRESS || glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_UP) == GLFW_PRESS) {
+			ship.position.x += moveSpeed * cos(ship.theta + glm::radians(90.0f));
+			ship.position.y += moveSpeed * sin(ship.theta + glm::radians(90.0f));
+		}
+		if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_S) == GLFW_PRESS || glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_DOWN) == GLFW_PRESS) {
+			ship.position.x -= moveSpeed * cos(ship.theta + glm::radians(90.0f));
+			ship.position.y -= moveSpeed * sin(ship.theta + glm::radians(90.0f));
+		}
+
+		ship.position.x = glm::clamp(ship.position.x, -1.0f + ship.scale, 1.0f - ship.scale);
+		ship.position.y = glm::clamp(ship.position.y, -1.0f + ship.scale, 1.0f - ship.scale);
+
+		diamond.position += diamond.movementVector;
+
+		//checks if it hits window edge and invert movement vector
+		if (diamond.position.x + diamond.scale >= 1.0f || diamond.position.x - diamond.scale <= -1.0f) {
+			diamond.movementVector.x *= -1.0f;
+		}
+		if (diamond.position.y + diamond.scale >= 1.0f || diamond.position.y - diamond.scale <= -1.0f) {
+			diamond.movementVector.y *= -1.0f;
+		}
+		
 
 		shader.use();
 
