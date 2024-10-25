@@ -43,7 +43,7 @@ struct GameObject {
 	// glm::vec3 heading;
 	float scale; // Or, alternatively, a glm::vec2 scale;
 	glm::mat4 transformationMatrix;
-	glm::vec3 movementVector; //movement vector for the diamond
+	glm::vec3 movementVector; //movement vector for the diamond, direction and speed
 	bool diamondVisible = true; //visibility of diamond for game logic
 };
 
@@ -60,7 +60,7 @@ public:
 			restartGame();
 		}
 		if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-			float moveSpeed = 0.01f; //change this value to make ship go faster or slower :D, don't forget to also change the moveSpeed in the rendering loop as well.
+			float moveSpeed = 0.001f; //change this value to make ship go faster or slower :D, don't forget to also change the moveSpeed in the rendering loop as well.
 			if (key == GLFW_KEY_W || key == GLFW_KEY_UP) {
 				ship.position.x += moveSpeed * cos(ship.theta + glm::radians(90.0f));
 				ship.position.y += moveSpeed * sin(ship.theta + glm::radians(90.0f));
@@ -84,10 +84,11 @@ public:
 		float dx = x - ship.position.x;
 		float dy = y - ship.position.y;
 
-		ship.theta = atan2(dy, dx) - glm::radians(90.0f); //adjust it to match ship's sprite
+		ship.theta = atan2(dy, dx) - glm::radians(90.0f); //update ship theta to face the cursor
 
 	}
-	void restartGame() {
+
+	void restartGame() { //restarts everything 
 		ship.position = glm::vec3(0.0f, 0.0f, 0.0f);
 		ship.theta = 0.0f;
 		ship.scale = 0.1f;
@@ -103,6 +104,7 @@ public:
 			pickups[i]->transformationMatrix = glm::mat4(1.0f);
 		}
 
+		//resets game score
 		score = 0;
 		scoreValue = "0";
 		gameWin = false;
@@ -174,7 +176,7 @@ void updateTransformMatrix(GameObject& obj) {
 bool collision(const GameObject& object1, const GameObject& object2){
 	float distance = glm::distance(object1.position, object2.position); //gets distance between the two objects colliding
 	float collisionDistance = object1.scale + object2.scale;
-	return distance < collisionDistance;
+	return distance < collisionDistance; //if distance < sum of scales, collision is detected
 }
 
 
@@ -182,8 +184,6 @@ int main() {
 	int score = 0;
 	std::string scoreValue = "0";
 	static bool playerMoving = false;
-	//int score;
-	//std::string scoreValue = "0";
 	bool gameWin = false;
 	std::string winMessage = "You've collected all the diamonds! Great job! Press [R] to start a new game.";
 
@@ -219,13 +219,13 @@ int main() {
 	//window.setCallbacks(std::make_shared<MyCallbacks>(shader, ship, pickups));
 
 
-	//initialize diamonds
-	std::vector<std::shared_ptr<GameObject>> pickups;
+	//initialize diamonds (pickups)
+	std::vector<std::shared_ptr<GameObject>> pickups; //shared pointer to make it easier to reference diamonds objects
 	std::vector<glm::vec3> initialDiamondPositions;
 	std::vector<glm::vec3> initialMovementVectors;
 
 
-
+	//creats 5 diamonds in different places, with different movement vectors 
 	for (int i = 0; i < 5; i++) {
 		auto diamond = std::make_shared<GameObject>("textures/diamond.png", GL_NEAREST);
 		diamond->cgeom = shipGeom();
@@ -235,24 +235,25 @@ int main() {
 		diamond->scale = 0.1f;
 		diamond->transformationMatrix = glm::mat4(1.0f);
 
-		switch (i) { //set initial position for diamonds
+		switch (i) { //set initial position for diamonds, can change to determine where they spawn on startup
 			case 0:
-				diamond->position = glm::vec3(0.5f, 0.5f, 0.0f);
+				diamond->position = glm::vec3(0.5f, 0.45f, 0.0f);
 				break;
 			case 1:
-				diamond->position = glm::vec3(-0.5f, 0.5f, 0.0f);
+				diamond->position = glm::vec3(-0.5f, -0.55f, 0.0f);
 				break;
 			case 2:
-				diamond->position = glm::vec3(0.7f, 0.4f, 0.0f);
+				diamond->position = glm::vec3(-0.7f, 0.9f, 0.0f);
 				break;
 			case 3:
-				diamond->position = glm::vec3(0.3f, 0.2f, 0.0f);
+				diamond->position = glm::vec3(-0.9f, -0.85f, 0.0f);
 				break;
 			case 4:
-				diamond->position = glm::vec3(0.0f, 0.9f, 0.0f);
+				diamond->position = glm::vec3(0.2f, -0.9f, 0.0f);
 				break;
 		}
-		diamond->movementVector = glm::vec3(0.005f * (i + 1), 0.005f * (i - 1), 0.0f);
+
+		diamond->movementVector = glm::vec3(0.0005f * (i + 1), 0.0005f * (i - 1), 0.0f);
 
 		initialDiamondPositions.push_back(diamond->position);
 		initialMovementVectors.push_back(diamond->movementVector);
@@ -270,7 +271,7 @@ int main() {
 		glfwPollEvents();
 
 		//since keyCallback just captures key events, we need to check key states each frame to ensure continuous movement when keys are held down
-		float moveSpeed = 0.01f;
+		float moveSpeed = 0.001f; //need to change movespeed here too
 		if (glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_W) == GLFW_PRESS || glfwGetKey(glfwGetCurrentContext(), GLFW_KEY_UP) == GLFW_PRESS) {
 			ship.position.x += moveSpeed * cos(ship.theta + glm::radians(90.0f));
 			ship.position.y += moveSpeed * sin(ship.theta + glm::radians(90.0f));
@@ -280,10 +281,12 @@ int main() {
 			ship.position.y -= moveSpeed * sin(ship.theta + glm::radians(90.0f));
 		}
 
+		//make sure ship doesn't go off the screen bounds
 		ship.position.x = glm::clamp(ship.position.x, -1.0f + ship.scale, 1.0f - ship.scale);
 		ship.position.y = glm::clamp(ship.position.y, -1.0f + ship.scale, 1.0f - ship.scale);
 
-		for (auto& diamondPointer : pickups) {
+
+		for (auto& diamondPointer : pickups) { //auto& to ensure it references the actual object, not copies
 			auto& diamond = *diamondPointer;
 			if (!diamond.diamondVisible) continue;
 
@@ -310,7 +313,7 @@ int main() {
 				ship.scale += 0.05f; //increase ship's size, big number rn for debugging
 				score += 1;
 
-				scoreValue = std::to_string(score);
+				scoreValue = std::to_string(score); //updates score everytime ship picks up a diamond
 				if (score == 5) {
 					gameWin = true;
 				}
@@ -378,8 +381,8 @@ int main() {
 		ImGui::Begin("scoreText", (bool *)0, textWindowFlags);
 
 		// Scale up text a little, and set its value
-		ImGui::SetWindowFontScale(1.5f);
-		if (gameWin) {
+		ImGui::SetWindowFontScale(1.5f); 
+		if (gameWin) { //if loop to display win message
 			ImGui::Text("%s", winMessage.c_str());
 		}
 		else {
