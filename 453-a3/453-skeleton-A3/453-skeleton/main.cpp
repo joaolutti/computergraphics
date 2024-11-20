@@ -531,10 +531,9 @@ int main() {
 				keyPressW = true;
 				wireframe = !wireframe;
 			}
-			else {
-				keyPressW = false;
-			}
-			window.swapBuffers();
+		}
+		else {
+			keyPressW = false;
 		}
 
 
