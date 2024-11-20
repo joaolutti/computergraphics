@@ -126,6 +126,9 @@ public:
 		return bspline_curve_cpu.verts;
 	}
 
+	//declared as static so i can use it outside class
+	static CPU_Geometry chaikin(const std::vector<glm::vec3>& points, int interations);
+
 private:
 	GLFWwindow* window;
 	int width, height;
@@ -222,26 +225,44 @@ private:
 	}
 
 
-	CPU_Geometry chaikin(const std::vector<glm::vec3>& points, int iterations) {
-		std::vector<glm::vec3> temp = points;
-		for (int i = 0; i < iterations; i++) {
-			std::vector<glm::vec3> newPoints;
-			for (int k = 0; k < temp.size() - 1; k++) {
-				glm::vec3 Q = 0.75f * temp[k] + 0.25f * temp[k + 1];
-				glm::vec3 R = 0.25f * temp[k] + 0.75f * temp[k + 1];
-				newPoints.push_back(Q);
-				newPoints.push_back(R);
-			}
-			temp = newPoints;
-		}
-		CPU_Geometry result;
-		result.verts = temp;
-		result.cols = std::vector<glm::vec3>(temp.size(), glm::vec3(0.0f));
-		return result;
-	}
+	//CPU_Geometry chaikin(const std::vector<glm::vec3>& points, int iterations) {
+	//	std::vector<glm::vec3> temp = points;
+	//	for (int i = 0; i < iterations; i++) {
+	//		std::vector<glm::vec3> newPoints;
+	//		for (int k = 0; k < temp.size() - 1; k++) {
+	//			glm::vec3 Q = 0.75f * temp[k] + 0.25f * temp[k + 1];
+	//			glm::vec3 R = 0.25f * temp[k] + 0.75f * temp[k + 1];
+	//			newPoints.push_back(Q);
+	//			newPoints.push_back(R);
+	//		}
+	//		temp = newPoints;
+	//	}
+	//	CPU_Geometry result;
+	//	result.verts = temp;
+	//	result.cols = std::vector<glm::vec3>(temp.size(), glm::vec3(0.0f));
+	//	return result;
+	//}
 
 };
 
+//had to move chaikin outside of CurveEditorCallback so i can use it in the tensor surface
+CPU_Geometry CurveEditorCallBack::chaikin(const std::vector<glm::vec3>& points, int iterations) {
+	std::vector<glm::vec3> temp = points;
+	for (int i = 0; i < iterations; i++) {
+		std::vector<glm::vec3> newPoints;
+		for (size_t k = 0; k < temp.size() - 1; k++) {
+			glm::vec3 Q = 0.75f * temp[k] + 0.25f * temp[k + 1];
+			glm::vec3 R = 0.25f * temp[k] + 0.75f * temp[k + 1];
+			newPoints.push_back(Q);
+			newPoints.push_back(R);
+		}
+		temp = newPoints;
+	}
+	CPU_Geometry result;
+	result.verts = temp;
+	result.cols = std::vector<glm::vec3>(temp.size(), glm::vec3(0.0f));
+	return result;
+}
 
 
 // Can swap the callback instead of maintaining a state machine
@@ -450,7 +471,55 @@ CPU_Geometry generateSurfaceOfRevolution(const std::vector<glm::vec3>& curvePoin
 }
 
 
-enum class ViewMode { EDITOR_2D, VIEWER_3D, SURFACE_3D };
+
+CPU_Geometry generateTensorSurface(const std::vector<std::vector<glm::vec3>>& controlPoints, int iterations = 2) {
+	std::vector<std::vector<glm::vec3>> gridPoints1; // smooth in 1 direction
+
+	for (const std::vector<glm::vec3>& innerControlPoints : controlPoints) {
+		CPU_Geometry geom;
+		geom.verts = innerControlPoints;
+		CPU_Geometry smoothGeom = CurveEditorCallBack::chaikin(geom.verts, iterations);
+		gridPoints1.push_back(smoothGeom.verts);
+	}
+
+	std::vector<std::vector<glm::vec3>> transposedGrid; 
+
+	for (size_t i = 0; i < gridPoints1[0].size(); i++) {
+		std::vector<glm::vec3> columnPoints;
+		for (size_t j = 0; j < gridPoints1.size(); j++) {
+			columnPoints.push_back(gridPoints1[j][i]);
+		}
+		transposedGrid.push_back(columnPoints);
+	}
+
+	std::vector<std::vector<glm::vec3>> gridPoints;
+	for (const auto& columnPoints : transposedGrid) {
+		CPU_Geometry geom;
+		geom.verts = columnPoints;
+		CPU_Geometry smoothGeom = CurveEditorCallBack::chaikin(geom.verts, iterations);
+		gridPoints.push_back(smoothGeom.verts);
+	}
+
+	//generate triangles from grid points
+	CPU_Geometry result;
+	for (size_t i = 0; i < gridPoints.size() - 1; i++) {
+		for (size_t j = 0; j < gridPoints[i].size() - 1; j++) {
+			result.verts.push_back(gridPoints[i][j]);
+			result.verts.push_back(gridPoints[i + 1][j]);
+			result.verts.push_back(gridPoints[i + 1][j + 1]);
+
+			result.verts.push_back(gridPoints[i][j]);
+			result.verts.push_back(gridPoints[i + 1][j + 1]);
+			result.verts.push_back(gridPoints[i][j + 1]);
+		}
+	}
+	result.cols.resize(result.verts.size(), glm::vec3(0.0f)); //black color
+	return result;
+
+
+}
+
+enum class ViewMode { EDITOR_2D, VIEWER_3D, SURFACE_3D, TENSOR_SURFACE };
 
 int main() {
 	Log::debug("Starting main");
@@ -489,6 +558,26 @@ int main() {
 	auto curve_editor_panel_renderer = std::make_shared<CurveEditorPanelRenderer>();
 	panel.setPanelRenderer(curve_editor_panel_renderer);
 
+
+	std::vector<std::vector<glm::vec3>> tensorSurface1 = {
+	{ glm::vec3(-2,0,-2), glm::vec3(-1,0,-2), glm::vec3(0,0,-2), glm::vec3(1,0,-2), glm::vec3(2,0,-2) },
+	{ glm::vec3(-2,0,-1), glm::vec3(-1,1,-1), glm::vec3(0,1,-1), glm::vec3(1,1,-1), glm::vec3(2,0,-1) },
+	{ glm::vec3(-2,0,0),  glm::vec3(-1,1,0),  glm::vec3(0,-1,0), glm::vec3(1,1,0),  glm::vec3(2,0,0) },
+	{ glm::vec3(-2,0,1),  glm::vec3(-1,1,1),  glm::vec3(0,1,1),  glm::vec3(1,1,1),  glm::vec3(2,0,1) },
+	{ glm::vec3(-2,0,2),  glm::vec3(-1,0,2),  glm::vec3(0,0,2),  glm::vec3(1,0,2),  glm::vec3(2,0,2) }
+	};
+
+	std::vector<std::vector<glm::vec3>> tensorSurface2 = {
+	{ glm::vec3(-2,0,-2), glm::vec3(-1,0,-2), glm::vec3(0,0,-2), glm::vec3(1,0,-2), glm::vec3(2,0,-2) },
+	{ glm::vec3(-2,1,-1), glm::vec3(-1,2,-1), glm::vec3(0,2,-1), glm::vec3(1,2,-1), glm::vec3(2,1,-1) },
+	{ glm::vec3(-2,0,0),  glm::vec3(-1,0,0),  glm::vec3(0,1,0),  glm::vec3(1,0,0),  glm::vec3(2,0,0) }
+	};
+
+
+	//store both surfaces in a vector
+	std::vector<std::vector<std::vector<glm::vec3>>> tensorSurfaces = { tensorSurface1, tensorSurface2 };
+
+	int currentTensorSurface = 0;
 	while (!window.shouldClose()) {
 		glfwPollEvents();
 
@@ -496,7 +585,6 @@ int main() {
 		static bool keyPressW = false;
 		if (glfwGetKey(window.getGLFWwindow(), GLFW_KEY_V) == GLFW_PRESS) {
 			
-
 			if (!keyPress) {
 				keyPress = true;
 				if (currentView == ViewMode::EDITOR_2D) {
@@ -516,6 +604,15 @@ int main() {
 						surface_gpu.setCols(surface_cpu.cols);
 					}
 				}
+				else if (currentView == ViewMode::SURFACE_3D) {
+					currentView = ViewMode::TENSOR_SURFACE;
+					window.setCallbacks(turntable_callback);
+
+					currentTensorSurface = 0;
+					surface_cpu = generateTensorSurface(tensorSurfaces[currentTensorSurface]);
+					surface_gpu.setVerts(surface_cpu.verts);
+					surface_gpu.setCols(surface_cpu.cols);
+				}
 				else {
 					currentView = ViewMode::EDITOR_2D;
 					window.setCallbacks(curve_editor_callback);
@@ -534,6 +631,38 @@ int main() {
 		}
 		else {
 			keyPressW = false;
+		}
+
+		static bool leftPress = false;
+		static bool rightPress = true;
+		if (currentView == ViewMode::TENSOR_SURFACE) {
+			if (glfwGetKey(window.getGLFWwindow(), GLFW_KEY_LEFT) == GLFW_PRESS){
+				if (!leftPress) {
+					leftPress = true;
+					currentTensorSurface = (currentTensorSurface - 1 + tensorSurfaces.size()) % tensorSurfaces.size();
+					surface_cpu = generateTensorSurface(tensorSurfaces[currentTensorSurface], 2);
+					surface_gpu.setVerts(surface_cpu.verts);
+					surface_gpu.setCols(surface_cpu.cols);
+				}
+			}
+			else {
+				leftPress = false;
+			}
+
+			if (glfwGetKey(window.getGLFWwindow(), GLFW_KEY_RIGHT) == GLFW_PRESS) {
+				if (!rightPress) {
+					rightPress = true;
+					currentTensorSurface = (currentTensorSurface + 1) % tensorSurfaces.size();
+					surface_cpu = generateTensorSurface(tensorSurfaces[currentTensorSurface], 2);
+					surface_gpu.setVerts(surface_cpu.verts);
+					surface_gpu.setCols(surface_cpu.cols);
+				}
+			}
+			else {
+				rightPress = false;
+			}
+			
+		
 		}
 
 
@@ -595,6 +724,21 @@ int main() {
 		}
 		else if (currentView == ViewMode::SURFACE_3D) {
 			// Render the surface of revolution
+			surface_gpu.bind();
+
+			if (wireframe) {
+				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			}
+			else {
+				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+			}
+
+			glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(surface_cpu.verts.size()));
+
+			// Reset to fill mode for other rendering
+			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		}
+		else if (currentView == ViewMode::TENSOR_SURFACE) {
 			surface_gpu.bind();
 
 			if (wireframe) {
