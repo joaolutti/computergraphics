@@ -29,7 +29,7 @@ public:
 
 	virtual void keyCallback(int key, int scancode, int action, int mods) override {
 		if (action == GLFW_PRESS) {
-			if (key == GLFW_KEY_R) { //R press for resest
+			if (key == GLFW_KEY_R) { //R press for resest all points
 				controlPoints.clear();
 				selectedPoint = -1;
 				updateControlPointGeom();
@@ -37,12 +37,6 @@ public:
 			}
 			else if (key == GLFW_KEY_C) { //C press to change curve type (bezier or b-spline)
 				currentCurve = (currentCurve + 1) % 2;
-				updateCurveGeom();
-			}
-			else if ((key == GLFW_KEY_BACKSPACE) && selectedPoint >= 0) {
-				controlPoints.erase(controlPoints.begin() + selectedPoint);
-				selectedPoint = -1;
-				updateControlPointGeom();
 				updateCurveGeom();
 			}
 		}
@@ -164,6 +158,7 @@ private:
 		return -1;
 	}
 
+	//updates geometries for control points and lines
 	void updateControlPointGeom() {
 		cp_point_cpu.verts = controlPoints;
 		cp_point_cpu.cols = std::vector<glm::vec3>(controlPoints.size(), cp_point_color);
@@ -182,6 +177,7 @@ private:
 
 	}
 
+	//updates curve based on points and curve type
 	void updateCurveGeom() {
 		if (controlPoints.size() < 2) {
 			curve_cpu.verts.clear();
@@ -204,6 +200,7 @@ private:
 		curve_gpu.setCols(curve_cpu.cols);
 	}
 
+	//fx to genereate bezier curve with de Casteljay algo
 	CPU_Geometry deCasteljau(const std::vector<glm::vec3>& points) {
 		CPU_Geometry result;
 		int numPoints = points.size();
@@ -284,7 +281,7 @@ public:
 		}
 	}
 	virtual void mouseButtonCallback(int button, int action, int mods) {
-		if (button == GLFW_MOUSE_BUTTON_LEFT) {
+		if (button == GLFW_MOUSE_BUTTON_LEFT) { //camera rotation
 			if (action == GLFW_PRESS) {
 				leftMousePress = true;
 				glfwGetCursorPos(window, &lastX, &lastY);
@@ -329,7 +326,7 @@ public:
 		this->height = height;
 	}
 
-	glm::mat4 const getViewMatrix() {
+	glm::mat4 const getViewMatrix() { //view matrix for camera
 		float x = radius * cos(phi) * sin(theta);
 		float y = radius * sin(phi);
 		float z = radius * cos(phi) * cos(theta);
@@ -473,7 +470,7 @@ CPU_Geometry generateSurfaceOfRevolution(const std::vector<glm::vec3>& curvePoin
 
 
 CPU_Geometry generateTensorSurface(const std::vector<std::vector<glm::vec3>>& controlPoints, int iterations = 2) {
-	std::vector<std::vector<glm::vec3>> gridPoints1; // smooth in 1 direction
+	std::vector<std::vector<glm::vec3>> gridPoints1; // smooth each row of control points
 
 	for (const std::vector<glm::vec3>& innerControlPoints : controlPoints) {
 		CPU_Geometry geom;
@@ -482,8 +479,8 @@ CPU_Geometry generateTensorSurface(const std::vector<std::vector<glm::vec3>>& co
 		gridPoints1.push_back(smoothGeom.verts);
 	}
 
+	//tranposing grid to smooth in the other direction
 	std::vector<std::vector<glm::vec3>> transposedGrid; 
-
 	for (size_t i = 0; i < gridPoints1[0].size(); i++) {
 		std::vector<glm::vec3> columnPoints;
 		for (size_t j = 0; j < gridPoints1.size(); j++) {
@@ -492,6 +489,7 @@ CPU_Geometry generateTensorSurface(const std::vector<std::vector<glm::vec3>>& co
 		transposedGrid.push_back(columnPoints);
 	}
 
+	//smooth each column, transposed makes it now a row instead
 	std::vector<std::vector<glm::vec3>> gridPoints;
 	for (const auto& columnPoints : transposedGrid) {
 		CPU_Geometry geom;
@@ -524,41 +522,40 @@ enum class ViewMode { EDITOR_2D, VIEWER_3D, SURFACE_3D, TENSOR_SURFACE };
 int main() {
 	Log::debug("Starting main");
 
-	// Initialize GLFW and create window
+	// WINDOW
 	glfwInit();
 	Window window(800, 800, "CPSC 453: Assignment 3");
 	Panel panel(window.getGLFWwindow());
 	int width = 800, height = 800;
 	bool wireframe = false; //flag for wiref
+	ViewMode currentView = ViewMode::EDITOR_2D;
 
-	// Initialize shaders
-	ShaderProgram shader_program_default(
-		"shaders/test.vert",
-		"shaders/test.frag"
-	);
 
-	// Initialize GPU geometries
+	//initialize all GPU geometreis
 	GPU_Geometry cp_point_gpu, cp_line_gpu, curve_gpu, surface_gpu;
 	CPU_Geometry surface_cpu;
 
-	ViewMode currentView = ViewMode::EDITOR_2D;
-
-	// Create the callback object
+	//CALLBACKS
 	auto curve_editor_callback = std::make_shared<CurveEditorCallBack>(
 		window.getGLFWwindow(), cp_point_gpu, cp_line_gpu, curve_gpu);
+	auto curve_editor_panel_renderer = std::make_shared<CurveEditorPanelRenderer>();
 
 	auto turntable_callback = std::make_shared<TurnTable3DViewerCallBack>(
 		window.getGLFWwindow());
 
 
-	// Set callbacks
+	//Set callback to window
 	window.setCallbacks(curve_editor_callback);
 
-	// Panel renderer
-	auto curve_editor_panel_renderer = std::make_shared<CurveEditorPanelRenderer>();
+	//Panel inputs
 	panel.setPanelRenderer(curve_editor_panel_renderer);
 
+	ShaderProgram shader_program_default(
+		"shaders/test.vert",
+		"shaders/test.frag"
+	);
 
+	//tensor surface 1, handout points
 	std::vector<std::vector<glm::vec3>> tensorSurface1 = {
 	{ glm::vec3(-2,0,-2), glm::vec3(-1,0,-2), glm::vec3(0,0,-2), glm::vec3(1,0,-2), glm::vec3(2,0,-2) },
 	{ glm::vec3(-2,0,-1), glm::vec3(-1,1,-1), glm::vec3(0,1,-1), glm::vec3(1,1,-1), glm::vec3(2,0,-1) },
@@ -567,6 +564,7 @@ int main() {
 	{ glm::vec3(-2,0,2),  glm::vec3(-1,0,2),  glm::vec3(0,0,2),  glm::vec3(1,0,2),  glm::vec3(2,0,2) }
 	};
 
+	//tensor surface 2
 	std::vector<std::vector<glm::vec3>> tensorSurface2 = {
 	{ glm::vec3(-2,0,-2), glm::vec3(-1,0,-2), glm::vec3(0,0,-2), glm::vec3(1,0,-2), glm::vec3(2,0,-2) },
 	{ glm::vec3(-2,1,-1), glm::vec3(-1,2,-1), glm::vec3(0,2,-1), glm::vec3(1,2,-1), glm::vec3(2,1,-1) },
@@ -583,7 +581,7 @@ int main() {
 
 		static bool keyPress = false;
 		static bool keyPressW = false;
-		if (glfwGetKey(window.getGLFWwindow(), GLFW_KEY_V) == GLFW_PRESS) {
+		if (glfwGetKey(window.getGLFWwindow(), GLFW_KEY_V) == GLFW_PRESS) { //switching scenes with V press, goes 2d editor -> 3d curve viewer -> 3d surface rev -> tensor surfaces and back to 2d editor
 			
 			if (!keyPress) {
 				keyPress = true;
@@ -636,7 +634,7 @@ int main() {
 		static bool leftPress = false;
 		static bool rightPress = true;
 		if (currentView == ViewMode::TENSOR_SURFACE) {
-			if (glfwGetKey(window.getGLFWwindow(), GLFW_KEY_LEFT) == GLFW_PRESS){
+			if (glfwGetKey(window.getGLFWwindow(), GLFW_KEY_LEFT) == GLFW_PRESS){ //left or right arrow press to switch between two tensor surfaces
 				if (!leftPress) {
 					leftPress = true;
 					currentTensorSurface = (currentTensorSurface - 1 + tensorSurfaces.size()) % tensorSurfaces.size();
@@ -668,33 +666,35 @@ int main() {
 
 		glm::vec3 background_colour = curve_editor_panel_renderer->getColor();
 
-		// Clear buffers
+		//------------------------------------------
 		glEnable(GL_LINE_SMOOTH);
 		glEnable(GL_DEPTH_TEST);
 		glEnable(GL_FRAMEBUFFER_SRGB);
 		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		glClearColor(background_colour.r, background_colour.g, background_colour.b, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		//------------------------------------------
 
-		// Use shader program
+		// Use the default shader (can use different ones for different objects)
 		shader_program_default.use();
-		// Set up matrices
+
+		//set up matrices
 		glm::mat4 model = glm::mat4(1.0f);
 		glm::mat4 view;
 		glm::mat4 projection;
 
 		if (currentView == ViewMode::EDITOR_2D) {
-			// 2D Orthographic projection
+			//2d orthographic proj
 			projection = glm::ortho(-1.0f, 1.0f, -1.0f, 1.0f);
 			view = glm::mat4(1.0f);
 		}
 		else {
-			// 3D Perspective projection
+			//3d perspective projection when outside of 2D proj
 			projection = glm::perspective(glm::radians(45.0f), width / (float)height, 0.1f, 100.0f);
 			view = turntable_callback->getViewMatrix();
 		}
 
-		// Pass matrices to the shade
+		//pass matrices to shader
 		GLint modelLoc = glGetUniformLocation(shader_program_default, "model");
 		GLint viewLoc = glGetUniformLocation(shader_program_default, "view");
 		GLint projLoc = glGetUniformLocation(shader_program_default, "projection");
@@ -704,12 +704,12 @@ int main() {
 		glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
 
 		if (currentView == ViewMode::EDITOR_2D) {
-			// Render control points
+			//Render control points
 			cp_point_gpu.bind();
 			glPointSize(15.f);
 			glDrawArrays(GL_POINTS, 0, curve_editor_callback->getControlPointSize());
 
-			// Render control polygon
+			//Render curve connecting control points
 			cp_line_gpu.bind();
 			glDrawArrays(GL_LINE_STRIP, 0, curve_editor_callback->getControlLineSize());
 
@@ -723,7 +723,7 @@ int main() {
 			glDrawArrays(GL_LINE_STRIP, 0, curve_editor_callback->getCurveSize());
 		}
 		else if (currentView == ViewMode::SURFACE_3D) {
-			// Render the surface of revolution
+			//render surface of revolution
 			surface_gpu.bind();
 
 			if (wireframe) {
@@ -735,7 +735,7 @@ int main() {
 
 			glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(surface_cpu.verts.size()));
 
-			// Reset to fill mode for other rendering
+			//reset
 			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		}
 		else if (currentView == ViewMode::TENSOR_SURFACE) {
@@ -750,16 +750,16 @@ int main() {
 
 			glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(surface_cpu.verts.size()));
 
-			// Reset to fill mode for other rendering
+			//reset
 			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 		}
 
-		// Render panel
-		glDisable(GL_FRAMEBUFFER_SRGB);
+		//------------------------------------------
+		glDisable(GL_FRAMEBUFFER_SRGB); // disable sRGB for things like imgui
 		panel.render();
-
-		// Swap buffers
+		//------------------------------------------
 		window.swapBuffers();
+		//------------------------------------------
 	}
 
 	glfwTerminate();
