@@ -5,9 +5,9 @@
 UnitSphere::UnitSphere() : m_size(0) {}
 
 void UnitSphere::generateGeometry(int stacks, int slices) {
-	std::vector<glm::vec3> positions;
-	std::vector<glm::vec3> normals;
-	std::vector<glm::vec2> texCoords;
+	std::vector<glm::vec3> positions; //3d coords for each vertex on sphere
+	std::vector<glm::vec3> normals; //normals at each vertex
+	std::vector<glm::vec2> texCoords; //texture coords
 
 	float pi = glm::pi<float>();
 
@@ -19,6 +19,7 @@ void UnitSphere::generateGeometry(int stacks, int slices) {
 		for (int j = 0; j <= slices; j++) {
 			float u = (float)j / slices;
 			float theta = u * (2 * pi);
+			//cartesian coords
 			float x = cos(theta) * sin(phi);
 			float y = cos(phi);
 			float z = sin(theta) * sin(phi);
@@ -39,8 +40,8 @@ void UnitSphere::generateGeometry(int stacks, int slices) {
 	//generate triangles
 	for (int i = 0; i < stacks; i++) {
 		for (int j = 0; j < slices; j++) {
-			int row1 = i * (slices + 1);
-			int row2 = (i + 1) * (slices + 1);
+			int row1 = i * (slices + 1); //starting index of curr stack
+			int row2 = (i + 1) * (slices + 1); //staring index of next stack
 
 			//1st triangle
 			finalPositions.push_back(positions[row1 + j]);

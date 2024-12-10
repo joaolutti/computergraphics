@@ -27,35 +27,39 @@ class Planet {
 public:
 	Planet(const std::string& texturePath, float scale, float orbitalRadius, float orbitSpeed, float selfRotationSpeed, float orbitalInclination, float axisTilt, Planet* parent = nullptr)
 		: texture(texturePath, GL_LINEAR), scale(scale), orbitalRadius(orbitalRadius), orbitSpeed(orbitSpeed)
-		, selfRotationSpeed(selfRotationSpeed), orbitalInclination(glm::radians(orbitalInclination)), axisTilt(glm::radians(axisTilt)), parent(parent)
+		, selfRotationSpeed(selfRotationSpeed), orbitalInclination(glm::radians(orbitalInclination)), axisTilt(glm::radians(axisTilt)), parent(parent), modelMatrix(1.0f), localMatrix(1.0f), worldMatrix(1.0f)
 	{}
-
 	void update(float time) {
-		modelMatrix = glm::mat4(1.0f);
-		if (parent) {
-			modelMatrix = parent->modelMatrix;
-		}
-		//orbital inclination
-		modelMatrix = glm::rotate(modelMatrix, orbitalInclination, glm::vec3(1.0f, 0.0f, 0.0f));
-
-		//rotate around parent
-		float orbitAngle = time * orbitSpeed;
-		modelMatrix = glm::rotate(modelMatrix, orbitAngle, glm::vec3(0.0f, 1.0f, 0.0f));
-
-		//translate outward to orbital radius
-		modelMatrix = glm::translate(modelMatrix, glm::vec3(orbitalRadius, 0.0f, 0.0f));
-
-		//apply axis tilt on planet
-		modelMatrix = glm::rotate(modelMatrix, axisTilt, glm::vec3(0.0f, 0.0f, 1.0f));
-
-		//rotation around own axis
+		localMatrix = glm::mat4(1.0f); //local transformations first
+		//scale
+		localMatrix = glm::scale(localMatrix, glm::vec3(scale));
+		//self-axis rotation
 		float rotationAngle = time * selfRotationSpeed;
-		modelMatrix = glm::rotate(modelMatrix, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+		localMatrix = glm::rotate(localMatrix, rotationAngle, glm::vec3(0.0f, 1.0f, 0.0f));
 
-		//scale planet
-		modelMatrix = glm::scale(modelMatrix, glm::vec3(scale));
+		//world pos and orientation
+		worldMatrix = glm::mat4(1.0f);
+
+
+		if (parent) {
+			glm::vec3 parentPos = glm::vec3(parent->modelMatrix[3]); //parent's position only
+			float orbitAngle = time * orbitSpeed;
+
+			//calculate orbital pos 
+			glm::vec3 orbitOffset = glm::vec3(orbitalRadius * cos(orbitAngle), orbitalRadius * sin(orbitAngle) * sin(orbitalInclination), orbitalRadius * sin(orbitAngle) * cos(orbitalInclination));
+
+			//new pos relative to parent
+			worldMatrix = glm::translate(glm::mat4(1.0f), parentPos + orbitOffset);
+		}
+		//extra matrix to keep axis orientation constant while orbiting
+		glm::mat4 tiltMatrix = glm::mat4(1.0f);
+		tiltMatrix = glm::rotate(tiltMatrix, axisTilt, glm::vec3(0.0f, 0.0f, 1.0f));
+
+
+		//combine world orientation with local transformations
+		modelMatrix = worldMatrix * tiltMatrix * localMatrix;
+
 	}
-
 	void draw(GLint uniM, GLint texLoc, UnitSphere& sphere) {
 		texture.bind();
 		glUniform1i(texLoc, 0);
@@ -63,10 +67,8 @@ public:
 		sphere.m_gpu_geom.bind();
 		glDrawArrays(GL_TRIANGLES, 0, GLsizei(sphere.m_size));
 	}
-
-
 	//member vars
-	glm::mat4 modelMatrix;
+	glm::mat4 modelMatrix; //transformation matrix
 	Texture texture;
 	float scale;
 	float orbitalRadius;
@@ -76,7 +78,21 @@ public:
 	float axisTilt;
 	Planet* parent; //pointer to parent planet in hierarchy
 
+private:
+	glm::mat4 localMatrix; //scale and self rotation (local)
+	glm::mat4 worldMatrix; //position and axis orientation (world)
 };
+
+float animationTime = 0.0f;
+
+//for camera setup
+glm::vec3 getPlanetPosition(const Planet& planet) {
+	return glm::vec3(planet.modelMatrix[3]);
+}
+
+Planet* g_sun = nullptr;
+Planet* g_earth = nullptr;
+Planet* g_moon = nullptr;
 
 // EXAMPLE CALLBACKS
 class Assignment4 : public CallbackInterface {
@@ -88,9 +104,47 @@ public:
 		, rightMouseDown(false)
 		, mouseOldX(0.0)
 		, mouseOldY(0.0)
+		, isPaused(false)
+		, animationSpeed(1.0f)
 	{}
 
-	virtual void keyCallback(int key, int scancode, int action, int mods) {}
+	enum class CameraTarget {
+		NONE,
+		SUN,
+		EARTH,
+		MOON
+	};
+
+	CameraTarget currentTarget = CameraTarget::NONE;
+
+	bool isPaused;
+	float animationSpeed;
+
+	virtual void keyCallback(int key, int scancode, int action, int mods) {
+		if (action == GLFW_PRESS || action == GLFW_REPEAT) {
+			if (key == GLFW_KEY_SPACE) {
+				isPaused = !isPaused;
+			}
+			else if (key == GLFW_KEY_UP) {
+				animationSpeed += 0.1f;
+			}
+			else if (key == GLFW_KEY_DOWN) {
+				animationSpeed = std::max(0.1f, animationSpeed - 0.1f);
+			}
+			else if (key == GLFW_KEY_R) {
+				animationTime = 0.0f;
+			}
+			else if (key == GLFW_KEY_1) {
+				currentTarget = CameraTarget::SUN;
+			}
+			else if (key == GLFW_KEY_2) {
+				currentTarget = CameraTarget::EARTH;
+			}
+			else if (key == GLFW_KEY_3) {
+				currentTarget = CameraTarget::MOON;
+			}
+		}
+	}
 	virtual void mouseButtonCallback(int button, int action, int mods) {
 		if (button == GLFW_MOUSE_BUTTON_RIGHT) {
 			if (action == GLFW_PRESS)			rightMouseDown = true;
@@ -154,15 +208,34 @@ int main() {
 	//uniform locations
 	GLint uniM = glGetUniformLocation(shader, "M");
 	GLint texLoc = glGetUniformLocation(shader, "sampler");
+	GLint uniLightPos = glGetUniformLocation(shader, "lightPos");
+	GLint uniViewPos = glGetUniformLocation(shader, "viewPos");
+	GLint uniAmbientColor = glGetUniformLocation(shader, "ambientColor");
+	GLint uniDiffuseColor = glGetUniformLocation(shader, "diffuseColor");
+	GLint uniSpecularColor = glGetUniformLocation(shader, "specularColor");
+	GLint uniShininess = glGetUniformLocation(shader, "shininess");
+	GLint uniApplyShading = glGetUniformLocation(shader, "applyShading");
 
-	//planet instances e stars
-	Planet sun("textures/sun.jpg", 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
-	Planet earth("textures/earth.jpg", 0.5f, 5.0f, 0.2f, 1.0f, 7.0f, 23.5f, &sun);
-	Planet moon("textures/moon.jpg", 0.2f, 1.5f, 1.0f, 1.0f, 5.0f, 6.68f, &earth);
+	//Planet(texturePath,scale,orbitalRadius,orbitSpeed,selfRotationSpeed,orbitalInclination,axisTilt)
+	//planet instances & stars
+	Planet sun("textures/sun.jpg", 5.0f, 0.0f, 0.0f, 1.0f, 0.0f, 10.0f);
+	Planet earth("textures/earth.jpg", 1.0f, 10.0f, 0.2f, 1.0f, 0.0f, 23.5f, &sun);
+	Planet moon("textures/moon.jpg", 0.2f, 2.5f, 0.5f, 0.5f, 45.0f, 6.68f, &earth);
 	Texture stars("textures/stars.jpg", GL_LINEAR);
 	glm::mat4 M_stars = glm::scale(glm::mat4(1.0f),glm::vec3(50.0f));
 
+	//blobal pointers for camera target
+	g_sun = &sun;
+	g_earth = &earth;
+	g_moon = &moon;
 
+
+	float lastTime = glfwGetTime();
+
+	//light position in the sun
+	glm::vec3 lightPos(0.0f, 0.0f, 0.0f);
+
+	
 
 	// RENDER LOOP
 	while (!window.shouldClose()) {
@@ -179,15 +252,57 @@ int main() {
 
 		a4->viewPipeline(shader);
 
-		float time = glfwGetTime();
 
-		sun.update(time);
+		float time = glfwGetTime();
+		float deltaTime = time - lastTime;
+		lastTime = time;
+
+		if (!a4->isPaused) {
+			animationTime += deltaTime * a4->animationSpeed;
+		}
+		//update light and view positions
+		glUniform3fv(uniLightPos, 1, glm::value_ptr(lightPos));
+		glm::vec3 viewPos = a4->camera.getPos();
+		glUniform3fv(uniViewPos, 1, glm::value_ptr(viewPos));
+
+		sun.update(animationTime);
+		earth.update(animationTime);
+		moon.update(animationTime);
+
+		//update camera target based on planet
+		if (a4->currentTarget == Assignment4::CameraTarget::SUN) {
+			a4->camera.setTarget(getPlanetPosition(sun));
+		}
+		else if (a4->currentTarget == Assignment4::CameraTarget::EARTH) {
+			a4->camera.setTarget(getPlanetPosition(earth));
+		}
+		else if (a4->currentTarget == Assignment4::CameraTarget::MOON) {
+			a4->camera.setTarget(getPlanetPosition(moon));
+		}
+
+		//draw the sun with no shading
+		glUniform1i(uniApplyShading, 0);
 		sun.draw(uniM, texLoc, sphere);
-		earth.update(time);
+
+
+		//draw earth with shading
+		glUniform1i(uniApplyShading, 1);
+		glUniform3f(uniAmbientColor, 0.1f, 0.1f, 0.1f);
+		glUniform3f(uniDiffuseColor, 0.5f, 0.5f, 0.5f);
+		glUniform3f(uniSpecularColor, 1.0f, 1.0f, 1.0f);
+		glUniform1f(uniShininess, 32.0f); //tweak with these to make it cleaner for both moon and earth
 		earth.draw(uniM, texLoc, sphere);
-		moon.update(time);
+
+		//draw moon with shading
+		glUniform1i(uniApplyShading, 1);
+		glUniform3f(uniAmbientColor, 0.1f, 0.1f, 0.1f);
+		glUniform3f(uniDiffuseColor, 0.3f, 0.3f, 0.3f);
+		glUniform3f(uniSpecularColor, 0.5f, 0.5f, 0.5f);
+		glUniform1f(uniShininess, 16.0f);
 		moon.draw(uniM, texLoc, sphere);
 
+		//draw stars
+		glUniform1i(uniApplyShading, 0);
 		stars.bind();
 		glUniform1i(texLoc, 0);
 		glUniformMatrix4fv(uniM, 1, GL_FALSE, glm::value_ptr(M_stars));

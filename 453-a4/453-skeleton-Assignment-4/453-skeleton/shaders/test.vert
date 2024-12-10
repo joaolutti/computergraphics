@@ -7,9 +7,13 @@ uniform mat4 M;
 uniform mat4 V;
 uniform mat4 P;
 
+out vec3 FragPos;
+out vec3 Normal;
 out vec2 UV;
 
 void main() {
-	gl_Position = P * V * M * vec4(pos, 1.0);
-	UV = vertexUV;
+    gl_Position = P * V * M * vec4(pos, 1.0);
+    FragPos = vec3(M * vec4(pos, 1.0)); //
+    Normal = normalize(mat3(transpose(inverse(M))) * normal); //normal transformation
+    UV = vertexUV;
 }

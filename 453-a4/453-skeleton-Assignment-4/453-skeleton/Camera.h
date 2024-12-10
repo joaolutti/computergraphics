@@ -20,9 +20,14 @@ public:
 	void incrementPhi(float dp);
 	void incrementR(float dr);
 
+	void setTarget(const glm::vec3 &target) {
+		cameraTarget = target;
+	}
+
 private:
 
 	float theta;
 	float phi;
 	float radius;
+	glm::vec3 cameraTarget = glm::vec3(0.0f);
 };

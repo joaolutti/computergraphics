@@ -7,7 +7,7 @@
 class UnitSphere {
 public:
 	UnitSphere();
-	void generateGeometry(int stacks = 32, int slices = 64);
+	void generateGeometry(int stacks = 16, int slices = 32);
 
 	GPU_Geometry m_gpu_geom;
 	size_t m_size;
