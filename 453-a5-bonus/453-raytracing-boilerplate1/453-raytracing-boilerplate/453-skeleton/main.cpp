@@ -83,6 +83,15 @@ glm::vec3 raytraceSingleRay(Scene const &scene, Ray const &ray, int level, int s
 		phong.material.reflectionStrength = glm::vec3(0);
 	}
 
+	//part 3
+	vec3 lightDirection = glm::normalize(scene.lightPosition - result.point);
+	Ray shadowRay(result.point + result.normal * 0.001f, lightDirection);
+
+	int shadowIntersection = hasIntersection(scene, shadowRay, result.id);
+
+	if (shadowIntersection != -1) { //in shadow, only use ambient component of material
+		return phong.material.ambient;
+	}
 
 	return phong.I();
 }
@@ -97,18 +106,17 @@ std::vector<RayAndPixel> getRaysForViewpoint(Scene const &scene, ImageBuffer &im
 	std::vector<RayAndPixel> rays;
 	int width = image.Width();
 	int height = image.Height();
+	float aspectRatio = static_cast<float>(width) / height;
 
-	// For each pixel (x, y), generate a ray from the pinhole (0,0,0).
+	//TODO: need to finish tweaking with this 
 	for (int x = 0; x < width; x++) {
 		for (int y = 0; y < height; y++) {
-			// Convert pixel coordinates to normalized device coordinates (NDC)
-			// NDC range: x,y in [-1, 1]
-			float fov = M_PI / 2.0f; // 90 degrees
+			float fov = M_PI / 2.0f; 
 			float scale = tan(fov / 2.0f);
-			float u = (2.0f * x / float(width) - 1.0f) * scale;
+			float u = (2.0f * x / float(width) - 1.0f) * scale * aspectRatio;
 			float v = (2.0f * y / float(height) - 1.0f);
 
-			// Image plane at z = -1 (assuming camera looks along -Z)
+			//image plane point
 			glm::vec3 imagePlanePoint(u, v, -1.0f);
 
 			// Ray origin is always at the pinhole (camera location)

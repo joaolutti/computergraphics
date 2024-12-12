@@ -25,6 +25,32 @@ Intersection Sphere::getIntersection(Ray ray){
 	i.id = id;
 	i.material = material;
 
+	vec3 oc = ray.origin - centre;
+
+	float a = dot(ray.direction, ray.direction);
+	float b = 2.0f * dot(oc, ray.direction);
+	float c = dot(oc, oc) - radius * radius;
+	float discriminant = b * b - 4 * a * c;
+
+
+	if (discriminant < 0) {
+		i.numberOfIntersections = 0;
+		return i;
+	}
+	//intersection points
+	float t1 = (-b - sqrt(discriminant)) / (2.0f * a);
+	float t2 = (-b + sqrt(discriminant)) / (2.0f * a);
+
+	float t = (t1 > 0) ? t1 : t2;
+
+	if (t <= 0) {
+		i.numberOfIntersections = 0;
+		return i;
+	}
+	i.point = ray.origin + t * ray.direction;
+	i.normal = normalize(i.point - centre);
+	i.numberOfIntersections = 1;
+
 	// You are required to implement this intersection.
 	//
 	// NOTE: You _must_ set these values appropriately for each case:
