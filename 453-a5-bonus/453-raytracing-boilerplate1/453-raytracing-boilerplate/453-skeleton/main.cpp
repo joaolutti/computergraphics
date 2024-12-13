@@ -71,29 +71,86 @@ glm::vec3 raytraceSingleRay(Scene const &scene, Ray const &ray, int level, int s
 	//               reflected array and the color from the phong shading equation.
 	Intersection result = getClosestIntersection(scene, ray, source_id); //find intersection
 
+	//return local color on recursion limit
+	if (level < 1) {
+		PhongReflection phong;
+		phong.ray = ray;
+		phong.scene = scene;
+		phong.material = result.material;
+		phong.intersection = result;
+		return phong.I();
+	}
+
 	PhongReflection phong;
 	phong.ray = ray;
 	phong.scene = scene;
 	phong.material = result.material;
 	phong.intersection = result;
+	glm::vec3 finalColor(0.0f);
 
 	if(result.numberOfIntersections == 0) return glm::vec3(0, 0, 0); // black;
 
-	if (level < 1) {
-		phong.material.reflectionStrength = glm::vec3(0);
-	}
+	
 
 	//part 3
 	vec3 lightDirection = glm::normalize(scene.lightPosition - result.point);
 	Ray shadowRay(result.point + result.normal * 0.001f, lightDirection);
-
 	int shadowIntersection = hasIntersection(scene, shadowRay, result.id);
 
 	if (shadowIntersection != -1) { //in shadow, only use ambient component of material
-		return phong.material.ambient;
+		finalColor = phong.Ia();
+	}
+	else {
+		finalColor = phong.I();
 	}
 
-	return phong.I();
+	//part 4
+	//reflection
+	float avgReflection = (phong.material.reflectionStrength.r + phong.material.reflectionStrength.g + phong.material.reflectionStrength.b) / 3.0f;
+	if (avgReflection > 0.0f) {
+		glm::vec3 D = ray.direction;
+		glm::vec3 N = result.normal;
+		glm::vec3 reflectionDir = D - 2.0f * glm::dot(D, N) * N; //R = D - 2(N*D)N
+		Ray reflectRay(result.point + N * 0.001f, reflectionDir);
+		glm::vec3 reflectionColor(0.0f);
+		reflectionColor = raytraceSingleRay(scene, reflectRay, level - 1, result.id);
+		finalColor = (1.0f - avgReflection) * finalColor + avgReflection * reflectionColor;
+	}
+
+	//refraction
+	if (phong.material.refractiveIndex > 1.0f) {
+		float etai = 1.0f;
+		float etat = phong.material.refractiveIndex;
+		glm::vec3 N = result.normal;
+		float cosi = glm::dot(ray.direction, N);
+
+		//ray inside object
+		if (cosi > 0.0f) {
+			std::swap(etai, etat);
+			N = -N;
+			cosi = glm::dot(ray.direction, N);
+		}
+
+		float eta = etai / etat;
+		float k = 1.0f - eta * eta * (1.0f - cosi * cosi);
+		glm::vec3 refractionColor(0.0f);
+		glm::vec3 refractionDir;
+		if (k < 0.0f) {
+			glm::vec3 D = ray.direction;
+			refractionDir = D - 2.0f * glm::dot(D, N) * N;
+		}
+		else {
+			refractionDir = eta * ray.direction + (eta * cosi - sqrtf(k)) * N;
+		}
+
+		refractionDir = glm::normalize(refractionDir);
+		Ray refractionRay(result.point - N * 0.001f, refractionDir);
+		refractionColor = raytraceSingleRay(scene, refractionRay, level - 1, result.id);
+
+		finalColor = (1.0f - 0.5f) * finalColor + 0.5f * refractionColor;
+	}
+
+	return finalColor;
 }
 
 struct RayAndPixel {
@@ -103,29 +160,26 @@ struct RayAndPixel {
 };
 
 std::vector<RayAndPixel> getRaysForViewpoint(Scene const &scene, ImageBuffer &image, glm::vec3 viewPoint) {
+
+	//part 1
 	std::vector<RayAndPixel> rays;
 	int width = image.Width();
 	int height = image.Height();
 	float aspectRatio = static_cast<float>(width) / height;
 
-	//TODO: need to finish tweaking with this 
 	for (int x = 0; x < width; x++) {
 		for (int y = 0; y < height; y++) {
 			float fov = M_PI / 2.0f; 
 			float scale = tan(fov / 2.0f);
-			float u = (2.0f * x / float(width) - 1.0f) * scale * aspectRatio;
-			float v = (2.0f * y / float(height) - 1.0f);
+			float u = (2.0f * (x+0.5f) / float(width) - 1.0f) * scale * aspectRatio;
+			float v = (2.0f * y / float(height) - 1.0f) * scale;
 
 			//image plane point
 			glm::vec3 imagePlanePoint(u, v, -1.0f);
 
-			// Ray origin is always at the pinhole (camera location)
-			glm::vec3 origin = viewPoint;
-
-			// Direction is from origin towards the pixel on the image plane
-			glm::vec3 direction = glm::normalize(imagePlanePoint - origin);
-
-			Ray r = Ray(origin, direction);
+			//generate ray
+			glm::vec3 direction = glm::normalize(imagePlanePoint - viewPoint);
+			Ray r = Ray(viewPoint, direction);
 			rays.push_back({ r, x, y });
 		}
 	}
@@ -161,7 +215,7 @@ class Assignment5 : public CallbackInterface {
 
 public:
 	Assignment5() {
-		viewPoint = glm::vec3(0, 0, 1.3);
+		viewPoint = glm::vec3(0, 0, 1.3); //had to zoom in z
 		scene = initScene1();
 		raytraceImage(scene, outputImage, viewPoint);
 	}

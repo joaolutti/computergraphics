@@ -273,6 +273,16 @@ Scene initScene1() {
 	pyramid->material.reflectionStrength = vec3(0.3);
 	scene1.shapesInScene.push_back(pyramid);
 
+	//cylinder
+	float cylinderHeight = 1.5f;
+	mat3 identityRotation = mat3(1.0f);
+	std::shared_ptr<Cylinder> cylinder = std::make_shared<Cylinder>(vec3(-1.5f, -2.0f, -6.0f), 0.5f, 10, cylinderHeight, identityRotation);
+	cylinder->material.diffuse = vec3(0.5, 0.5, 1.0);
+	cylinder->material.ambient = 0.1f * cylinder->material.diffuse;
+	cylinder->material.specular = 0.1f * cylinder->material.diffuse;
+	cylinder->material.reflectionStrength = glm::vec3(0.4f, 0.4f, 0.4f);
+	scene1.shapesInScene.push_back(cylinder);
+
 	std::shared_ptr<Triangles> rightWall = std::make_shared<Triangles>();
 	rightWall->initTriangles(2, right_wall, 3);
 	rightWall->material.diffuse = vec3(0.0, 0.7, 0.0);
@@ -355,6 +365,21 @@ Scene initScene2() {
 	greenCone->material.specular = greenCone->material.diffuse;
 	greenCone->material.specularCoefficient = 8;
 	scene2.shapesInScene.push_back(greenCone);
+
+	//cylinder
+	float cylinderHeight = 0.5f;
+	float angle = glm::radians(20.0f);
+	mat3 identityRotation = mat3(
+		cos(angle), -sin(angle), 0,
+		sin(angle), cos(angle), 0,
+		0, 0, 1
+	);
+	std::shared_ptr<Cylinder> cylinder = std::make_shared<Cylinder>(vec3(-1.5, -0.7f, -4.0f), 0.1f, 11, cylinderHeight, identityRotation);
+	cylinder->material.diffuse = vec3(0.5, 0.5, 1.0);
+	cylinder->material.ambient = 0.1f * cylinder->material.diffuse;
+	cylinder->material.specular = 0.1f * cylinder->material.diffuse;
+	cylinder->material.reflectionStrength = glm::vec3(0.4f, 0.4f, 0.4f);
+	scene2.shapesInScene.push_back(cylinder);
 
 	//Floor
 	std::shared_ptr<Plane> floorTwo = std::make_shared<Plane>(

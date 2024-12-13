@@ -75,11 +75,14 @@ Intersection Sphere::getIntersection(Ray ray){
 //
 // Make sure you set all of the appropriate fields in the Intersection object.
 //------------------------------------------------------------------------------
-Cylinder::Cylinder(vec3 c, float r, int ID)
+Cylinder::Cylinder(vec3 c, float r, int ID, float h, mat3 rot)
 {
 	center = c;
 	radius = r;
 	id = ID;
+	height = h;
+	orientation = rot;
+	orientationInv = glm::transpose(rot);
 }
 
 Intersection Cylinder::getIntersection(Ray ray)
@@ -104,6 +107,63 @@ Intersection Cylinder::getIntersection(Ray ray)
 	// If you get fancy and implement things like refraction, you may actually
 	// want to track more than one intersection. You'll need to change
 	// The intersection struct in that case.
+
+	vec3 localOrigin = orientationInv * (ray.origin - center);
+	vec3 localDir = orientationInv * ray.direction;
+	float dx = localDir.x;
+	float dz = localDir.z;
+	float ox = localOrigin.x;
+	float oz = localOrigin.z;
+	float A = dx * dx + dz * dz;
+
+	//ray is parallel to cylinder's axis or no valid intersection
+	if (A < 1e-8) {
+		i.numberOfIntersections = 0;
+		return i;
+	}
+	float B = 2.0f * (dx * ox + dz * oz);
+	float C = ox * ox + oz * oz - radius * radius;
+	float discriminant = B * B - 4 * A * C;
+	if (discriminant < 0) {
+		i.numberOfIntersections = 0;
+		return i;
+	}
+
+	float t1 = (-B - sqrt(discriminant)) / (2.0f * A);
+	float t2 = (-B + sqrt(discriminant)) / (2.0f * A);
+
+	float  t = (t1 > 0) ? t1 : t2;
+
+	//check if intersection point within height bounds
+	vec3 localP = localOrigin + t * localDir; //intersection in local space
+	float halfHeight = height * 0.5f;
+
+
+	if (localP.y < -halfHeight || localP.y > halfHeight) { //intersection out of range, try other t
+		if (t == t1) {
+			t = t2;
+			if (t <= 0) {
+				i.numberOfIntersections = 0;
+				return i;
+			}
+			localP = localOrigin + t * localDir;
+			if (localP.y < -halfHeight || localP.y > halfHeight) {
+				i.numberOfIntersections = 0;
+				return i;
+			}
+		}
+		else {
+			i.numberOfIntersections = 0;
+			return i;
+		}
+	}
+
+	//valid intersection
+	i.point = ray.origin + t * ray.direction;
+	vec3 localN = normalize(vec3(localP.x, 0.0f, localP.z)); //normal in local space
+	vec3 worldN = glm::normalize(orientation * localN); //back to world space
+	i.normal = worldN;
+	i.numberOfIntersections = 1;
 	return i;
 }
 

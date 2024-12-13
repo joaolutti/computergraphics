@@ -99,8 +99,10 @@ public:
 	vec3 center;
 	float radius;
 	float height;
+	mat3 orientation; //local to world space
+	mat3 orientationInv; //world space to local
 
-	Cylinder(vec3 c, float r, int ID);
+	Cylinder(vec3 c, float r, int ID, float h, mat3 rot);
 	Intersection getIntersection(Ray ray);
 };
 

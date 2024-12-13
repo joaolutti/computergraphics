@@ -1,3 +1,13 @@
+Joao Lutti 30155249 - Assignment 5 Bonus
+
+I made the assignment using Windows 11 in Visual Studio, and used the default CMake compiler.
+
+I left the original README.md instructions below, and didn't change how you alternate scenes.
+
+Thanks! 
+
+Assignment Instructions:
+
 Assignment 4 boiler plate. This boilerplate is quite a bit different than your previous ones.
 
 First, you cannot change the view of the scene with keyboard and mouse. To do that, you will need to edit the code and ensure that the camera is setup appropriately.
